@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ultimate Dashboard Architect with Tables</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/interact.js/1.10.11/interact.min.js"></script>
+    <style>
+        :root { --primary: #1e293b; --accent: #2563eb; --bg: #f1f5f9; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        
+        .sidebar { width: 360px; background: white; border-right: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; z-index: 1000; box-shadow: 2px 0 10px rgba(0,0,0,0.05); overflow-y: auto; }
+        
+        .canvas-container { flex: 1; position: relative; overflow: auto; background-color: #cbd5e1; }
+        .canvas-area { 
+            position: absolute; min-width: 5000px; min-height: 5000px; 
+            background-image: radial-gradient(#94a3b8 1px, transparent 1px); background-size: 30px 30px;
+            transform-origin: 0 0; transition: transform 0.1s ease-out;
+        }
+
+        input, select { padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; width: 100%; margin-bottom: 8px; font-size: 13px; }
+        .btn { cursor: pointer; border: none; padding: 10px; border-radius: 4px; font-weight: 600; font-size: 12px; width: 100%; color: white; margin-bottom: 5px; }
+        .btn-primary { background: var(--accent); } .btn-success { background: #10b981; } .btn-reset { background: #64748b; }
+
+        .chart-widget { position: absolute; background: white; border-radius: 12px; box-shadow: 0 10px 15px rgba(0,0,0,0.1); padding: 15px; min-width: 450px; display: flex; flex-direction: column; z-index: 10; }
+        .widget-header { cursor: move; padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,0.05); display: flex; justify-content: space-between; font-weight: bold; font-size: 13px; }
+        .widget-content { flex: 1; overflow-y: auto; margin-top: 10px; }
+        
+        .kpi-value { font-size: 48px; font-weight: 800; text-align: center; margin: 20px 0; color: var(--primary); }
+        .kpi-label { text-align: center; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+
+        .w-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 15px; background: white; }
+        .w-table th, .w-table td { padding: 8px; border: 1px solid #e2e8f0; text-align: left; }
+        .w-table th { background: #f8fafc; position: sticky; top: 0; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h3>1. System Controls</h3>
+    <input type="text" id="sheetUrl" placeholder="Google Sheet URL">
+    <button class="btn btn-primary" onclick="importSheet()">+ Add Tab</button>
+    <button class="btn btn-success" onclick="refreshAndSync()">🔄 Global Sync</button>
+    
+    <div style="background:#f1f5f9; padding:10px; border-radius:8px; margin:10px 0;">
+        <label style="font-size:11px; font-weight:bold;">CANVAS ZOOM:</label>
+        <input type="range" min="0.2" max="1.5" step="0.1" value="1" oninput="setZoom(this.value)">
+        
+        <label style="font-size:11px; font-weight:bold; margin-top:10px; display:block;">GLOBAL FILTER:</label>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+            <select id="fM"></select><select id="fY"></select>
+            <select id="tM"></select><select id="tY"></select>
+        </div>
+    </div>
+
+    <hr>
+    <h3>2. Widget Designer</h3>
+    <select id="chartType">
+        <optgroup label="Charts & Tables">
+            <option value="bar">Bar Chart + Table</option>
+            <option value="horizontalBar">Horizontal Bar + Table</option>
+            <option value="line">Line Chart + Table</option>
+            <option value="pie">Pie Chart + Table</option>
+        </optgroup>
+        <optgroup label="Summaries">
+            <option value="kpi">KPI Card (No Table)</option>
+        </optgroup>
+    </select>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
+        <div><label style="font-size:10px">Chart Color</label><input type="color" id="cColor" value="#2563eb"></div>
+        <div><label style="font-size:10px">Widget BG</label><input type="color" id="bgColor" value="#ffffff"></div>
+    </div>
+
+    <div id="logicPanel"></div>
+    <button class="btn btn-reset" onclick="addMetric()">+ Add Metric</button>
+    <button class="btn btn-primary" onclick="saveWidget()">💾 Deploy Widget</button>
+    <button class="btn btn-reset" onclick="resetBuilder()">Clear Designer</button>
+</div>
+
+<div class="canvas-container">
+    <div class="canvas-area" id="dashboardCanvas"></div>
+</div>
+
+<script>
+    let rawStore = {}, activeWidgets = [], currentZoom = 1;
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const years = [2023, 2024, 2025, 2026];
+
+    window.onload = () => {
+        const populate = (id, arr, sel) => {
+            const el = document.getElementById(id);
+            arr.forEach((v, i) => el.innerHTML += `<option value="${i}" ${i==sel?'selected':''}>${v}</option>`);
+        };
+        populate('fM', months, 0); populate('tM', months, 11);
+        populate('fY', years, 2); populate('tY', years, 3);
+    };
+
+    function setZoom(val) {
+        currentZoom = val;
+        document.getElementById('dashboardCanvas').style.transform = `scale(${val})`;
+    }
+
+    async function importSheet() {
+        const url = document.getElementById('sheetUrl').value;
+        const id = url.match(/\/d\/(.+?)\//)[1];
+        const tab = prompt("Tab Name?");
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
+        const r = await fetch(csvUrl);
+        const txt = await r.text();
+        Papa.parse(txt, { header: true, complete: (res) => {
+            rawStore[tab] = { data: res.data, headers: Object.keys(res.data[0]), url, id };
+            if(document.querySelectorAll('.builder-row').length === 0) addMetric();
+        }});
+    }
+
+    function addMetric() {
+        const div = document.createElement('div');
+        div.className = "builder-row";
+        let tabs = Object.keys(rawStore).map(t => `<option value="${t}">${t}</option>`).join('');
+        div.innerHTML = `<select class="t-s" onchange="loadCols(this)"><option>Tab</option>${tabs}</select><select class="c-s"></select><select class="m-s"><option value="none">Label</option><option value="sum">Sum</option><option value="avg">Avg%</option></select>`;
+        document.getElementById('logicPanel').appendChild(div);
+    }
+
+    function loadCols(el) { el.parentElement.querySelector('.c-s').innerHTML = rawStore[el.value].headers.map(h => `<option value="${h}">${h}</option>`).join(''); }
+
+    function refreshAndSync() { activeWidgets.forEach(w => updateWidget(w)); }
+
+    function saveWidget() {
+        const rows = Array.from(document.querySelectorAll('.builder-row'));
+        const config = {
+            id: Date.now(),
+            type: document.getElementById('chartType').value,
+            cColor: document.getElementById('cColor').value,
+            bgColor: document.getElementById('bgColor').value,
+            metrics: rows.map(r => ({ tab: r.querySelector('.t-s').value, col: r.querySelector('.c-s').value, op: r.querySelector('.m-s').value }))
+        };
+        activeWidgets.push(config);
+        renderWidgetUI(config);
+    }
+
+    function renderWidgetUI(config) {
+        const widget = document.createElement('div');
+        widget.className = 'chart-widget';
+        widget.id = `wid-${config.id}`;
+        widget.style.backgroundColor = config.bgColor;
+        widget.innerHTML = `<div class="widget-header"><span>${config.metrics[1]?.col || 'Analysis'}</span><button onclick="removeWidget(${config.id})" style="border:none;background:none;color:red;cursor:pointer">×</button></div>
+                            <div class="widget-content" id="cont-${config.id}"></div>`;
+        document.getElementById('dashboardCanvas').appendChild(widget);
+        updateWidget(config);
+        makeInteractive(widget);
+    }
+
+    function updateWidget(config) {
+        const fM = parseInt(document.getElementById('fM').value), fY = years[document.getElementById('fY').value];
+        const tM = parseInt(document.getElementById('tM').value), tY = years[document.getElementById('tY').value];
+        const mainTab = config.metrics[0].tab;
+        const dateCol = rawStore[mainTab].headers.find(h => h.toLowerCase().includes('date') || h.toLowerCase().includes('month'));
+
+        let summary = {}, grandTotal = 0;
+        rawStore[mainTab].data.forEach(item => {
+            if(dateCol) {
+                const d = new Date(item[dateCol]);
+                const m = d.getMonth(), y = d.getFullYear();
+                if(y < fY || y > tY || (y==fY && m < fM) || (y==tY && m > tM)) return;
+            }
+            const key = item[config.metrics[0].col];
+            if(!key && config.type !== 'kpi') return;
+            if(!summary[key]) summary[key] = { count: 0, mValues: config.metrics.map(() => 0) };
+            summary[key].count++;
+            
+            config.metrics.slice(1).forEach((m, i) => {
+                const val = parseFloat(item[m.col]?.toString().replace(/[^\d.-]/g, '')) || 0;
+                summary[key].mValues[i+1] += val;
+                if(i === 0) grandTotal += val;
+            });
+        });
+
+        const container = document.getElementById(`cont-${config.id}`);
+        if(config.type === 'kpi') {
+            container.innerHTML = `<div class="kpi-value" style="color:${config.cColor}">${Math.round(grandTotal)}</div><div class="kpi-label">${config.metrics[1]?.col || 'Total'}</div>`;
+        } else {
+            const labels = Object.keys(summary);
+            const firstMetricData = labels.map(l => config.metrics[1].op === 'avg' ? (summary[l].mValues[1]/summary[l].count).toFixed(1) : summary[l].mValues[1]);
+            
+            container.innerHTML = `<div style="height:200px"><canvas id="c-${config.id}"></canvas></div><div id="t-${config.id}"></div>`;
+            
+            new Chart(document.getElementById(`c-${config.id}`), {
+                type: config.type === 'horizontalBar' ? 'bar' : config.type,
+                data: { labels, datasets: [{ label: config.metrics[1].col, data: firstMetricData, backgroundColor: config.cColor }] },
+                options: { indexAxis: config.type === 'horizontalBar' ? 'y' : 'x', maintainAspectRatio: false, responsive: true }
+            });
+
+            // Restored Table Logic
+            let tableHtml = `<table class="w-table"><thead><tr><th>${config.metrics[0].col}</th>`;
+            config.metrics.slice(1).forEach(m => tableHtml += `<th>${m.col}</th>`);
+            tableHtml += `</tr></thead><tbody>`;
+            labels.forEach(l => {
+                tableHtml += `<tr><td>${l}</td>`;
+                config.metrics.slice(1).forEach((m, i) => {
+                    let val = summary[l].mValues[i+1];
+                    tableHtml += `<td>${m.op === 'avg' ? (val/summary[l].count).toFixed(1)+'%' : Math.round(val)}</td>`;
+                });
+                tableHtml += `</tr>`;
+            });
+            document.getElementById(`t-${config.id}`).innerHTML = tableHtml + `</tbody></table>`;
+        }
+    }
+
+    function removeWidget(id) { activeWidgets = activeWidgets.filter(w => w.id !== id); document.getElementById(`wid-${id}`).remove(); }
+    function resetBuilder() { document.getElementById('logicPanel').innerHTML = ''; addMetric(); }
+    function makeInteractive(el) {
+        interact(el).draggable({ allowFrom: '.widget-header', onmove: (e) => {
+            let x = (parseFloat(el.getAttribute('data-x')) || 0) + e.dx / currentZoom;
+            let y = (parseFloat(el.getAttribute('data-y')) || 0) + e.dy / currentZoom;
+            el.style.transform = `translate(${x}px, ${y}px)`; el.setAttribute('data-x', x); el.setAttribute('data-y', y);
+        }}).resizable({ edges: { right: true, bottom: true }, onmove: (e) => {
+            Object.assign(el.style, { width: `${e.rect.width / currentZoom}px`, height: `${e.rect.height / currentZoom}px` });
+        }});
+    }
+</script>
+</body>
+</html>
