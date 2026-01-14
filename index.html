@@ -2,16 +2,21 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Ultimate Dashboard Architect with Tables</title>
+    <title>Enterprise Dashboard - High Precision</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/interact.js/1.10.11/interact.min.js"></script>
     <style>
         :root { --primary: #1e293b; --accent: #2563eb; --bg: #f1f5f9; }
         body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        .sidebar { width: 380px; background: white; border-right: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; z-index: 1000; box-shadow: 2px 0 10px rgba(0,0,0,0.05); overflow-y: auto; }
         
-        .sidebar { width: 360px; background: white; border-right: 1px solid #e2e8f0; padding: 20px; display: flex; flex-direction: column; z-index: 1000; box-shadow: 2px 0 10px rgba(0,0,0,0.05); overflow-y: auto; }
-        
+        .builder-row { 
+            display: flex; gap: 8px; background: #f8fafc; padding: 10px; 
+            border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 10px; align-items: center; 
+        }
+        .builder-row select { margin-bottom: 0; flex: 1; height: 35px; border-color: #cbd5e1; }
+
         .canvas-container { flex: 1; position: relative; overflow: auto; background-color: #cbd5e1; }
         .canvas-area { 
             position: absolute; min-width: 5000px; min-height: 5000px; 
@@ -22,17 +27,19 @@
         input, select { padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; width: 100%; margin-bottom: 8px; font-size: 13px; }
         .btn { cursor: pointer; border: none; padding: 10px; border-radius: 4px; font-weight: 600; font-size: 12px; width: 100%; color: white; margin-bottom: 5px; }
         .btn-primary { background: var(--accent); } .btn-success { background: #10b981; } .btn-reset { background: #64748b; }
+        .btn-danger { background: #ef4444; }
 
-        .chart-widget { position: absolute; background: white; border-radius: 12px; box-shadow: 0 10px 15px rgba(0,0,0,0.1); padding: 15px; min-width: 450px; display: flex; flex-direction: column; z-index: 10; }
-        .widget-header { cursor: move; padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,0.05); display: flex; justify-content: space-between; font-weight: bold; font-size: 13px; }
+        .chart-widget { position: absolute; background: white; border-radius: 12px; box-shadow: 0 10px 15px rgba(0,0,0,0.1); padding: 15px; min-width: 480px; display: flex; flex-direction: column; z-index: 10; }
+        .widget-header { cursor: move; padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,0.05); display: flex; justify-content: space-between; font-weight: bold; font-size: 13px; align-items: center;}
         .widget-content { flex: 1; overflow-y: auto; margin-top: 10px; }
         
-        .kpi-value { font-size: 48px; font-weight: 800; text-align: center; margin: 20px 0; color: var(--primary); }
-        .kpi-label { text-align: center; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+        .kpi-value { font-size: 42px; font-weight: 800; text-align: center; margin: 15px 0; color: var(--primary); word-break: break-all; }
+        .kpi-label { text-align: center; font-size: 12px; color: #64748b; text-transform: uppercase; }
 
         .w-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 15px; background: white; }
         .w-table th, .w-table td { padding: 8px; border: 1px solid #e2e8f0; text-align: left; }
         .w-table th { background: #f8fafc; position: sticky; top: 0; }
+        .sheet-link { color: #2563eb; text-decoration: none; font-size: 14px; margin-right: 8px; }
     </style>
 </head>
 <body>
@@ -41,7 +48,8 @@
     <h3>1. System Controls</h3>
     <input type="text" id="sheetUrl" placeholder="Google Sheet URL">
     <button class="btn btn-primary" onclick="importSheet()">+ Add Tab</button>
-    <button class="btn btn-success" onclick="refreshAndSync()">🔄 Global Sync</button>
+    <button class="btn btn-success" onclick="refreshAndSync()">🔄 Global Sync (Live Refresh)</button>
+    <button class="btn btn-danger" onclick="clearAllData()">🗑️ Clear All & Reset</button>
     
     <div style="background:#f1f5f9; padding:10px; border-radius:8px; margin:10px 0;">
         <label style="font-size:11px; font-weight:bold;">CANVAS ZOOM:</label>
@@ -49,22 +57,23 @@
         
         <label style="font-size:11px; font-weight:bold; margin-top:10px; display:block;">GLOBAL FILTER:</label>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px;">
-            <select id="fM"></select><select id="fY"></select>
-            <select id="tM"></select><select id="tY"></select>
+            <select id="fM" onchange="triggerUpdate()"></select><select id="fY" onchange="triggerUpdate()"></select>
+            <select id="tM" onchange="triggerUpdate()"></select><select id="tY" onchange="triggerUpdate()"></select>
         </div>
     </div>
 
     <hr>
     <h3>2. Widget Designer</h3>
     <select id="chartType">
-        <optgroup label="Charts & Tables">
+        <optgroup label="Visualizations">
             <option value="bar">Bar Chart + Table</option>
             <option value="horizontalBar">Horizontal Bar + Table</option>
             <option value="line">Line Chart + Table</option>
             <option value="pie">Pie Chart + Table</option>
         </optgroup>
-        <optgroup label="Summaries">
-            <option value="kpi">KPI Card (No Table)</option>
+        <optgroup label="Data & Summary">
+            <option value="kpi">KPI Card (Total/Avg Value)</option>
+            <option value="tableOnly">Table (No Chart)</option>
         </optgroup>
     </select>
 
@@ -74,9 +83,8 @@
     </div>
 
     <div id="logicPanel"></div>
-    <button class="btn btn-reset" onclick="addMetric()">+ Add Metric</button>
+    <button class="btn btn-reset" onclick="addMetric()">+ Add Metric Row</button>
     <button class="btn btn-primary" onclick="saveWidget()">💾 Deploy Widget</button>
-    <button class="btn btn-reset" onclick="resetBuilder()">Clear Designer</button>
 </div>
 
 <div class="canvas-container">
@@ -86,46 +94,80 @@
 <script>
     let rawStore = {}, activeWidgets = [], currentZoom = 1;
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const years = [2023, 2024, 2025, 2026];
+    const years = [2023, 2024, 2025, 2026, 2027];
 
     window.onload = () => {
+        setupFilters();
+        loadFromStorage();
+    };
+
+    function setupFilters() {
         const populate = (id, arr, sel) => {
             const el = document.getElementById(id);
             arr.forEach((v, i) => el.innerHTML += `<option value="${i}" ${i==sel?'selected':''}>${v}</option>`);
         };
         populate('fM', months, 0); populate('tM', months, 11);
-        populate('fY', years, 2); populate('tY', years, 3);
-    };
+        populate('fY', years, 2); populate('tY', years, 4);
+    }
 
-    function setZoom(val) {
-        currentZoom = val;
-        document.getElementById('dashboardCanvas').style.transform = `scale(${val})`;
+    function saveToStorage() {
+        localStorage.setItem('rawStore_v4', JSON.stringify(rawStore));
+        localStorage.setItem('activeWidgets_v4', JSON.stringify(activeWidgets));
+    }
+
+    function loadFromStorage() {
+        const sStore = localStorage.getItem('rawStore_v4');
+        const sWidgets = localStorage.getItem('activeWidgets_v4');
+        if(sStore) rawStore = JSON.parse(sStore);
+        if(sWidgets) {
+            activeWidgets = JSON.parse(sWidgets);
+            activeWidgets.forEach(config => renderWidgetUI(config));
+        }
+        if(Object.keys(rawStore).length > 0) addMetric();
     }
 
     async function importSheet() {
         const url = document.getElementById('sheetUrl').value;
-        const id = url.match(/\/d\/(.+?)\//)[1];
+        const idMatch = url.match(/\/d\/(.+?)\//);
         const tab = prompt("Tab Name?");
+        if(idMatch && tab) await fetchData(idMatch[1], tab, url);
+    }
+
+    async function fetchData(id, tab, url) {
         const csvUrl = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
         const r = await fetch(csvUrl);
         const txt = await r.text();
-        Papa.parse(txt, { header: true, complete: (res) => {
+        Papa.parse(txt, { header: true, skipEmptyLines: true, complete: (res) => {
             rawStore[tab] = { data: res.data, headers: Object.keys(res.data[0]), url, id };
+            saveToStorage();
             if(document.querySelectorAll('.builder-row').length === 0) addMetric();
         }});
     }
+
+    async function refreshAndSync() {
+        for (let tab in rawStore) await fetchData(rawStore[tab].id, tab, rawStore[tab].url);
+        triggerUpdate();
+    }
+
+    function triggerUpdate() { activeWidgets.forEach(w => updateWidget(w)); }
 
     function addMetric() {
         const div = document.createElement('div');
         div.className = "builder-row";
         let tabs = Object.keys(rawStore).map(t => `<option value="${t}">${t}</option>`).join('');
-        div.innerHTML = `<select class="t-s" onchange="loadCols(this)"><option>Tab</option>${tabs}</select><select class="c-s"></select><select class="m-s"><option value="none">Label</option><option value="sum">Sum</option><option value="avg">Avg%</option></select>`;
+        div.innerHTML = `
+            <select class="t-s" onchange="loadCols(this)"><option>Tab</option>${tabs}</select>
+            <select class="c-s"><option>Column</option></select>
+            <select class="m-s"><option value="none">Label</option><option value="sum">Sum</option><option value="avg">Average</option></select>
+            <button onclick="this.parentElement.remove()" style="background:none; border:none; color:red; cursor:pointer">✕</button>`;
         document.getElementById('logicPanel').appendChild(div);
     }
 
-    function loadCols(el) { el.parentElement.querySelector('.c-s').innerHTML = rawStore[el.value].headers.map(h => `<option value="${h}">${h}</option>`).join(''); }
-
-    function refreshAndSync() { activeWidgets.forEach(w => updateWidget(w)); }
+    function loadCols(el) { 
+        if(rawStore[el.value]) {
+            el.parentElement.querySelector('.c-s').innerHTML = rawStore[el.value].headers.map(h => `<option value="${h}">${h}</option>`).join(''); 
+        }
+    }
 
     function saveWidget() {
         const rows = Array.from(document.querySelectorAll('.builder-row'));
@@ -134,9 +176,11 @@
             type: document.getElementById('chartType').value,
             cColor: document.getElementById('cColor').value,
             bgColor: document.getElementById('bgColor').value,
-            metrics: rows.map(r => ({ tab: r.querySelector('.t-s').value, col: r.querySelector('.c-s').value, op: r.querySelector('.m-s').value }))
+            metrics: rows.map(r => ({ tab: r.querySelector('.t-s').value, col: r.querySelector('.c-s').value, op: r.querySelector('.m-s').value })),
+            pos: { x: 50, y: 50, w: 550, h: 500 }
         };
         activeWidgets.push(config);
+        saveToStorage();
         renderWidgetUI(config);
     }
 
@@ -145,78 +189,107 @@
         widget.className = 'chart-widget';
         widget.id = `wid-${config.id}`;
         widget.style.backgroundColor = config.bgColor;
-        widget.innerHTML = `<div class="widget-header"><span>${config.metrics[1]?.col || 'Analysis'}</span><button onclick="removeWidget(${config.id})" style="border:none;background:none;color:red;cursor:pointer">×</button></div>
-                            <div class="widget-content" id="cont-${config.id}"></div>`;
+        widget.style.transform = `translate(${config.pos.x}px, ${config.pos.y}px)`;
+        widget.style.width = config.pos.w + 'px';
+        widget.style.height = config.pos.h + 'px';
+        
+        widget.innerHTML = `
+            <div class="widget-header">
+                <div><a href="${rawStore[config.metrics[0].tab]?.url}" target="_blank" class="sheet-link">🔗</a><span>${config.metrics[1]?.col || 'View'}</span></div>
+                <button onclick="removeWidget(${config.id})" style="border:none;background:none;color:red;cursor:pointer">×</button>
+            </div>
+            <div class="widget-content" id="cont-${config.id}"></div>`;
         document.getElementById('dashboardCanvas').appendChild(widget);
         updateWidget(config);
-        makeInteractive(widget);
+        makeInteractive(widget, config);
     }
 
     function updateWidget(config) {
         const fM = parseInt(document.getElementById('fM').value), fY = years[document.getElementById('fY').value];
         const tM = parseInt(document.getElementById('tM').value), tY = years[document.getElementById('tY').value];
         const mainTab = config.metrics[0].tab;
-        const dateCol = rawStore[mainTab].headers.find(h => h.toLowerCase().includes('date') || h.toLowerCase().includes('month'));
+        if(!rawStore[mainTab]) return;
 
-        let summary = {}, grandTotal = 0;
+        const dateCol = rawStore[mainTab].headers.find(h => h.toLowerCase().includes('date') || h.toLowerCase().includes('month'));
+        let summary = {}, gTotal = 0, gValidCount = 0;
+
         rawStore[mainTab].data.forEach(item => {
-            if(dateCol) {
+            if(dateCol && item[dateCol]) {
                 const d = new Date(item[dateCol]);
                 const m = d.getMonth(), y = d.getFullYear();
                 if(y < fY || y > tY || (y==fY && m < fM) || (y==tY && m > tM)) return;
             }
-            const key = item[config.metrics[0].col];
-            if(!key && config.type !== 'kpi') return;
-            if(!summary[key]) summary[key] = { count: 0, mValues: config.metrics.map(() => 0) };
-            summary[key].count++;
+            const key = item[config.metrics[0].col] || "Other";
+            if(!summary[key]) summary[key] = { mValues: config.metrics.map(() => 0), mCounts: config.metrics.map(() => 0) };
             
             config.metrics.slice(1).forEach((m, i) => {
-                const val = parseFloat(item[m.col]?.toString().replace(/[^\d.-]/g, '')) || 0;
-                summary[key].mValues[i+1] += val;
-                if(i === 0) grandTotal += val;
+                const rawVal = item[m.col]?.toString().replace(/[^\d.-]/g, '');
+                if (rawVal !== "" && !isNaN(parseFloat(rawVal))) {
+                    const val = parseFloat(rawVal);
+                    summary[key].mValues[i+1] += val;
+                    summary[key].mCounts[i+1] += 1;
+                    if(i === 0) { gTotal += val; gValidCount++; }
+                }
             });
         });
 
         const container = document.getElementById(`cont-${config.id}`);
         if(config.type === 'kpi') {
-            container.innerHTML = `<div class="kpi-value" style="color:${config.cColor}">${Math.round(grandTotal)}</div><div class="kpi-label">${config.metrics[1]?.col || 'Total'}</div>`;
+            const finalKpi = config.metrics[1].op === 'avg' ? (gValidCount > 0 ? gTotal / gValidCount : 0) : gTotal;
+            container.innerHTML = `<div class="kpi-value" style="color:${config.cColor}">${finalKpi}</div><div class="kpi-label">${config.metrics[1].op.toUpperCase()}: ${config.metrics[1].col}</div>`;
         } else {
             const labels = Object.keys(summary);
-            const firstMetricData = labels.map(l => config.metrics[1].op === 'avg' ? (summary[l].mValues[1]/summary[l].count).toFixed(1) : summary[l].mValues[1]);
             
-            container.innerHTML = `<div style="height:200px"><canvas id="c-${config.id}"></canvas></div><div id="t-${config.id}"></div>`;
-            
-            new Chart(document.getElementById(`c-${config.id}`), {
-                type: config.type === 'horizontalBar' ? 'bar' : config.type,
-                data: { labels, datasets: [{ label: config.metrics[1].col, data: firstMetricData, backgroundColor: config.cColor }] },
-                options: { indexAxis: config.type === 'horizontalBar' ? 'y' : 'x', maintainAspectRatio: false, responsive: true }
-            });
-
-            // Restored Table Logic
-            let tableHtml = `<table class="w-table"><thead><tr><th>${config.metrics[0].col}</th>`;
-            config.metrics.slice(1).forEach(m => tableHtml += `<th>${m.col}</th>`);
-            tableHtml += `</tr></thead><tbody>`;
-            labels.forEach(l => {
-                tableHtml += `<tr><td>${l}</td>`;
-                config.metrics.slice(1).forEach((m, i) => {
-                    let val = summary[l].mValues[i+1];
-                    tableHtml += `<td>${m.op === 'avg' ? (val/summary[l].count).toFixed(1)+'%' : Math.round(val)}</td>`;
+            // Render Chart if not tableOnly
+            if(config.type !== 'tableOnly') {
+                const chartData = labels.map(l => config.metrics[1].op === 'avg' ? (summary[l].mCounts[1] > 0 ? summary[l].mValues[1] / summary[l].mCounts[1] : 0) : summary[l].mValues[1]);
+                container.innerHTML = `<div style="height:240px"><canvas id="c-${config.id}"></canvas></div><div id="t-${config.id}"></div>`;
+                new Chart(document.getElementById(`c-${config.id}`), {
+                    type: config.type === 'horizontalBar' ? 'bar' : config.type,
+                    data: { labels, datasets: [{ label: config.metrics[1].col, data: chartData, backgroundColor: config.cColor }] },
+                    options: { indexAxis: config.type === 'horizontalBar' ? 'y' : 'x', maintainAspectRatio: false }
                 });
-                tableHtml += `</tr>`;
+            } else {
+                container.innerHTML = `<div id="t-${config.id}"></div>`;
+            }
+
+            // Render Table
+            let table = `<table class="w-table"><thead><tr><th>${config.metrics[0].col}</th>`;
+            config.metrics.slice(1).forEach(m => table += `<th>${m.col} (${m.op})</th>`);
+            table += `</tr></thead><tbody>`;
+            labels.forEach(l => {
+                table += `<tr><td>${l}</td>`;
+                config.metrics.slice(1).forEach((m, i) => {
+                    const val = m.op === 'avg' ? (summary[l].mCounts[i+1] > 0 ? summary[l].mValues[i+1] / summary[l].mCounts[i+1] : 0) : summary[l].mValues[i+1];
+                    table += `<td>${val}</td>`;
+                });
+                table += `</tr>`;
             });
-            document.getElementById(`t-${config.id}`).innerHTML = tableHtml + `</tbody></table>`;
+            document.getElementById(`t-${config.id}`).innerHTML = table + `</tbody></table>`;
         }
     }
 
-    function removeWidget(id) { activeWidgets = activeWidgets.filter(w => w.id !== id); document.getElementById(`wid-${id}`).remove(); }
-    function resetBuilder() { document.getElementById('logicPanel').innerHTML = ''; addMetric(); }
-    function makeInteractive(el) {
+    function removeWidget(id) { 
+        activeWidgets = activeWidgets.filter(w => w.id !== id); 
+        document.getElementById(`wid-${id}`).remove();
+        saveToStorage();
+    }
+
+    function clearAllData() {
+        if(confirm("Wipe all data and widgets?")) { localStorage.clear(); location.reload(); }
+    }
+
+    function setZoom(v) { currentZoom = v; document.getElementById('dashboardCanvas').style.transform = `scale(${v})`; }
+
+    function makeInteractive(el, config) {
         interact(el).draggable({ allowFrom: '.widget-header', onmove: (e) => {
-            let x = (parseFloat(el.getAttribute('data-x')) || 0) + e.dx / currentZoom;
-            let y = (parseFloat(el.getAttribute('data-y')) || 0) + e.dy / currentZoom;
-            el.style.transform = `translate(${x}px, ${y}px)`; el.setAttribute('data-x', x); el.setAttribute('data-y', y);
+            config.pos.x += e.dx / currentZoom; config.pos.y += e.dy / currentZoom;
+            el.style.transform = `translate(${config.pos.x}px, ${config.pos.y}px)`;
+            saveToStorage();
         }}).resizable({ edges: { right: true, bottom: true }, onmove: (e) => {
-            Object.assign(el.style, { width: `${e.rect.width / currentZoom}px`, height: `${e.rect.height / currentZoom}px` });
+            config.pos.w = e.rect.width / currentZoom; config.pos.h = e.rect.height / currentZoom;
+            Object.assign(el.style, { width: config.pos.w + 'px', height: config.pos.h + 'px' });
+            saveToStorage();
         }});
     }
 </script>
