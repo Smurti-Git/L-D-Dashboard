@@ -253,27 +253,58 @@
         activeWidgets.forEach(w => renderWidgetUI(w));
     }
 
+    // function renderWidgetUI(config) {
+    //     if(config.canvasId !== activeCanvasId) return;
+    //     const canvas = document.getElementById(`canvas-${activeCanvasId}`);
+    //     const widget = document.createElement('div');
+    //     widget.className = 'chart-widget';
+    //     widget.id = `wid-${config.id}`;
+    //     widget.style.backgroundColor = config.bgColor || '#ffffff';
+    //     widget.style.transform = `translate(${config.pos.x}px, ${config.pos.y}px)`;
+    //     widget.style.width = (config.pos.w || 550) + 'px';
+    //     widget.style.height = (config.pos.h || 450) + 'px';
+        
+    //     widget.innerHTML = `
+    //         <div class="widget-header">
+    //             <span class="widget-title" onclick="renameWidget(${config.id})">${config.customName || config.metrics[1]?.col || 'Widget'}</span> 
+    //             <button onclick="removeWidget(${config.id})" style="border:none;background:none;color:red;cursor:pointer;font-weight:bold;">✕</button>
+    //         </div>
+    //         <div class="widget-content" id="cont-${config.id}"></div>`;
+    //     canvas.appendChild(widget);
+    //     updateWidget(config);
+    //     makeInteractive(widget, config);
+    // }
+
     function renderWidgetUI(config) {
-        if(config.canvasId !== activeCanvasId) return;
-        const canvas = document.getElementById(`canvas-${activeCanvasId}`);
-        const widget = document.createElement('div');
+    if(config.canvasId !== activeCanvasId) return;
+    const canvas = document.getElementById(`canvas-${activeCanvasId}`);
+    
+    // Check if widget already exists to prevent duplicates on sync
+    let widget = document.getElementById(`wid-${config.id}`);
+    if (!widget) {
+        widget = document.createElement('div');
         widget.className = 'chart-widget';
         widget.id = `wid-${config.id}`;
-        widget.style.backgroundColor = config.bgColor || '#ffffff';
-        widget.style.transform = `translate(${config.pos.x}px, ${config.pos.y}px)`;
-        widget.style.width = (config.pos.w || 550) + 'px';
-        widget.style.height = (config.pos.h || 450) + 'px';
-        
-        widget.innerHTML = `
-            <div class="widget-header">
-                <span class="widget-title" onclick="renameWidget(${config.id})">${config.customName || config.metrics[1]?.col || 'Widget'}</span> 
-                <button onclick="removeWidget(${config.id})" style="border:none;background:none;color:red;cursor:pointer;font-weight:bold;">✕</button>
-            </div>
-            <div class="widget-content" id="cont-${config.id}"></div>`;
         canvas.appendChild(widget);
-        updateWidget(config);
-        makeInteractive(widget, config);
     }
+
+    widget.style.backgroundColor = config.bgColor || '#ffffff';
+    // Use translate3d for smoother hardware-accelerated movement
+    widget.style.transform = `translate(${config.pos.x}px, ${config.pos.y}px)`;
+    widget.style.width = (config.pos.w || 550) + 'px';
+    widget.style.height = (config.pos.h || 450) + 'px';
+    widget.style.zIndex = config.pos.z || 10;
+    
+    widget.innerHTML = `
+        <div class="widget-header">
+            <span class="widget-title" onclick="renameWidget(${config.id})">${config.customName || config.metrics[1]?.col || 'Widget'}</span> 
+            <button onclick="removeWidget(${config.id})" style="border:none;background:none;color:red;cursor:pointer;font-weight:bold;">✕</button>
+        </div>
+        <div class="widget-content" id="cont-${config.id}"></div>`;
+        
+    updateWidget(config);
+    makeInteractive(widget, config);
+}
 
     function updateWidget(config) {
         const container = document.getElementById(`cont-${config.id}`);
@@ -412,17 +443,56 @@
         });
     }
 
+    // function makeInteractive(el, config) {
+    //     interact(el).draggable({ allowFrom: '.widget-header', onmove: (e) => {
+    //         config.pos.x += e.dx / currentZoom; config.pos.y += e.dy / currentZoom;
+    //         el.style.transform = `translate(${config.pos.x}px, ${config.pos.y}px)`;
+    //         saveToCloud();
+    //     }}).resizable({ edges: { right: true, bottom: true }, onmove: (e) => {
+    //         config.pos.w = e.rect.width / currentZoom; config.pos.h = e.rect.height / currentZoom;
+    //         Object.assign(el.style, { width: config.pos.w + 'px', height: config.pos.h + 'px' });
+    //         saveToCloud();
+    //     }});
+    // }
+
     function makeInteractive(el, config) {
-        interact(el).draggable({ allowFrom: '.widget-header', onmove: (e) => {
-            config.pos.x += e.dx / currentZoom; config.pos.y += e.dy / currentZoom;
+    interact(el).draggable({
+        allowFrom: '.widget-header',
+        inertia: true,
+        modifiers: [
+            interact.modifiers.restrictRect({
+                restriction: 'parent',
+                endOnly: true
+            })
+        ],
+        onstart: (e) => {
+            el.style.zIndex = 1000; // Bring to front while dragging
+        },
+        onmove: (e) => {
+            // CRITICAL: Divide movement by currentZoom so it moves 1:1 with mouse
+            config.pos.x += e.dx / currentZoom; 
+            config.pos.y += e.dy / currentZoom;
             el.style.transform = `translate(${config.pos.x}px, ${config.pos.y}px)`;
+        },
+        onend: (e) => {
+            el.style.zIndex = 10;
+            saveToCloud(); // Force sync to Firebase when dropped
+        }
+    }).resizable({
+        edges: { right: true, bottom: true },
+        onmove: (e) => {
+            config.pos.w = e.rect.width / currentZoom;
+            config.pos.h = e.rect.height / currentZoom;
+            Object.assign(el.style, {
+                width: config.pos.w + 'px',
+                height: config.pos.h + 'px'
+            });
+        },
+        onend: (e) => {
             saveToCloud();
-        }}).resizable({ edges: { right: true, bottom: true }, onmove: (e) => {
-            config.pos.w = e.rect.width / currentZoom; config.pos.h = e.rect.height / currentZoom;
-            Object.assign(el.style, { width: config.pos.w + 'px', height: config.pos.h + 'px' });
-            saveToCloud();
-        }});
-    }
+        }
+    });
+}
 
     function setupFilters() {
         const populate = (id, arr, sel) => {
